@@ -1,6 +1,6 @@
 import serial
 import os
-from time import localtime, strftime
+from time import localtime, strftime, sleep
 
 MAP_FILE = '/var/sbhspyserver/sbhshw/map_machine_ids.txt'
 LOG_FILE = '/var/sbhspylog/sbhserr.log'
@@ -10,8 +10,8 @@ INCOMING_FAN  = 253
 INCOMING_HEAT = 254
 OUTGOING_TEMP = 255
 
-MAX_HEAT = 40
-MAX_FAN = 251
+MAX_HEAT = 100
+MAX_FAN = 250
 
 class Sbhs:
     """ This is the Single Board Heater System class """
@@ -100,7 +100,7 @@ class Sbhs:
 
     def setHeat(self, val):
         """ Set the heat """
-        if val > MAX_HEAT:
+        if val > MAX_HEAT or val < 0:
             print 'Error: heat value cannot be more than %d' % MAX_HEAT
             return False
 
@@ -115,7 +115,7 @@ class Sbhs:
 
     def setFan(self, val):
         """ Set the fan """
-        if val > MAX_FAN:
+        if val > MAX_FAN or val < 0:
             print 'Error: fan value cannot be more than %d' % MAX_FAN
             return False
         try:
@@ -144,6 +144,7 @@ class Sbhs:
         try:
             self.boardcon.flushInput()
             self._write(chr(OUTGOING_MACHINE_ID))
+            sleep(0.5) # sleep before reading machine id
             machine_id = ord(self._read(1))
             return machine_id
         except:

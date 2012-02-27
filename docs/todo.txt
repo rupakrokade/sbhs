@@ -1,8 +1,11 @@
 code :
-- scilab file read / write on client simultaneously
+- remove django debug mode
 - remotely simulate plugin and plugout of sbhs
-- socket timeout settings
-- retry settings
+- webcam
+- document
+- test case
+- resetting SBHS after every hour and every access.
+- diff
 
 others :
 - automated testing
@@ -16,7 +19,14 @@ additional features :
 - change POST to debug mode
 
 completed :
+- download python 2.7 windows and put it on website rather than going
+- outside mail server
+- scilab file read / write on client simultaneously
+- show time pending
+- common client
+- fix the url issue
 - better log file name
+- timeout ..retry
 - sbhs query and mapping of machine id
 - add client receipt ts
 - check invalid data supplied by client

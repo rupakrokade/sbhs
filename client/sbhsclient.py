@@ -2,13 +2,10 @@
 
 ################## SYSTEM SETTINGS ######################
 
-base_url = 'http://10.102.152.5/sbhs/'
-#base_url = 'http://220.224.227.3/sbhs/'
+base_url = 'http://vlabs.iitb.ac.in/sbhs/hardware/'
 cur_log_file = ''
 scilabreadfname = 'scilabread.sce'
 scilabwritefname = 'scilabwrite.sce'
-exp_time = ''
-max_retry = 200
 
 #########################################################
 ############ DO NOT EDIT AFTER THIS LINE ################
@@ -17,33 +14,36 @@ max_retry = 200
 from sys import version_info, exit
 # check python version before proceeding
 python_ver = version_info
-print('Current python version is %d.%d' % (python_ver[0], python_ver[1]))
+print('Your current python version is %d.%d' % (python_ver[0], python_ver[1]))
 if python_ver[0] != 2:
-    print('Please use python version 2.6 or above')
+    print('Python 3 is not currently supported. Please use Python version 2.6.x or 2.7.x')
     exit(1)
 if python_ver[1] < 6:
-    print('Please use python version 2.6 or above')
+    print('Please use Python version 2.6.x or 2.7.x')
     exit(1)
 
 import urllib2, urllib, cookielib, socket
-from time import time
+from time import time, sleep
 from os import path
 from json import loads
 from getpass import getpass
 from ConfigParser import ConfigParser
 
 ################### GLOBAL VARIABLES ####################
+
 scilabreadf = ''
 scilabwritef = ''
 logf = ''
 current_client_version = '1'
+exp_end_time = 0
+user_timeout = 10
 
 ########## CONNECTION INITIALIZATION CODE ###############
 
 # Parse the user configuration file settings.ini
 config_parser = ConfigParser()
 if not config_parser.read('settings.txt'):
-    print('Cannot locate the "settings.txt" file. Please read the SBHS Guide on how to configure the SBHS client')
+    print('Cannot locate the "settings.txt" file. Please download the SBHS client code again.')
     exit(1)
 try:
     user_rollno = config_parser.get('sbhsclient', 'rollno').strip()
@@ -59,17 +59,8 @@ try:
         user_proxy_password = '' 
         user_proxy_host = '' 
         user_proxy_port = ''
-    user_timeout = config_parser.get('sbhsclient', 'timeout').strip()
-    if user_timeout:
-        try:
-            user_timeout = int(user_timeout)
-        except:
-            print('Invalid timeout specified in the "settings.txt" file')
-            exit(1)
-    else:
-        user_timeout = 10
 except:
-    print('Invalid settings in the "setttings.txt" file. Please read the SBHS Guide on how to configure the SBHS client settings')
+    print('Invalid settings in the "setttings.txt" file. Read the reference settings given in the "settings.txt"')
     exit(1)
 
 # Setup connection details including proxy and cookie support """
@@ -118,13 +109,13 @@ def checkconnection():
         if content == 'TESTOK':
             print('Connection successfull....')
             network_delay = end_time_ms - start_time_ms
-            print('Connection time taken is ' + str(network_delay) + ' milliseconds')
+            print('Connection time ' + str(network_delay) + ' milliseconds')
             return True
         else:
-            print('Connection data error...')
+            print('Data corruption error in connection check!')
             return False
     except:
-        print('Connection error ! Please check your internet connection and proxy settings')
+        print('Connection error ! Please check your internet connection and/or proxy settings.')
         return False
 
 def clientversion():
@@ -136,18 +127,18 @@ def clientversion():
         res = urllib2.urlopen(req)
         content = res.read()
         if content == current_client_version: 
-            print('Client version...OK')
+            print('SBHS client code latest...OK.')
             return True
         else:
-            print('Client version does not match. Please download the latest version from our website')
+            print('SBHS client code obsolete. Please download the latest code from our website.')
             return False
     except:
-        print('Connection error ! Please check your internet connection and proxy settings')
+        print('Connection error ! Please check your internet connection.')
         return False
 
 def authenticate():
     """ authenticate user and setup the experiment timeout """
-    global cur_log_file, base_url, exp_time, user_rollno, user_password
+    global cur_log_file, base_url, user_rollno, user_password, exp_end_time
     # get username if not set
     if not user_rollno:
         user_rollno = raw_input('Username/Roll Number:')
@@ -161,12 +152,12 @@ def authenticate():
         res = urllib2.urlopen(req, postdata)
         content = res.read()
     except:
-        print('Connection error ! Please check your internet connection and proxy settings')
+        print('Connection error ! Please check your internet connection.')
         return False
  
     content = loads(content)
     if not content[0] == 'S':
-        print('Invalid data received')
+        print('Data corruption error in authentication!')
         return False
     if content[1] == '0':
         print(content[2])
@@ -174,6 +165,12 @@ def authenticate():
     else:
         print(content[2])
         cur_log_file = content[3]
+        # calculate end timestamp, get the time remaining in minutes from the server and add to current time
+        try:
+            exp_end_time = int(time()) + (60 * int(content[4]))
+        except:
+            print('Error calculating experiment end time.')
+            exp_end_time = int(time())
 
     return True
 
@@ -183,26 +180,26 @@ def initlogfiles():
     try:
         file(scilabreadfname, 'w').close()
     except:
-        print('Failed to create Scilab input file: ' + scilabreadfname)
+        print('Failed to create file: ' + scilabreadfname)
         return False
     try:
         file(scilabwritefname, 'w').close()
     except:
-        print('Failed to create Scilab output file: ' + scilabwritefname)
+        print('Failed to create file: ' + scilabwritefname)
         return False
     if path.isfile(cur_log_file):
-        print('Log file' + cur_log_file + ' already exists')
+        print('Log file ' + cur_log_file + ' already exists.')
         return False
     try:
        file(cur_log_file, 'w').close()
     except:
-        print('Failed to create Log file:' + cur_log_file)
+        print('Failed to create Log file: ' + cur_log_file)
         return False
     return True
 
 def startexperiment():
     """ start the experiment """
-    global cur_log_file, exp_time, max_retry
+    global cur_log_file, exp_end_time
     global scilabreadf, scilabwritef, logf
 
     # open the log files
@@ -214,7 +211,7 @@ def startexperiment():
         print('Failed to access files needed for experiment')
         return False
 
-    print('Experiment has started. Please start your Scilab client')
+    print('Successfully connected to the server. You can now run your Scilab code...')
 
     # catch if Ctrl+C key is pressed by user and terminate the experiment
     try:
@@ -231,7 +228,7 @@ def startexperiment():
                     retry_read = False
 
             if scilabwritestr:
-                print('\nRead...' + scilabwritestr)
+                #print('\nRead...' + scilabwritestr)
                 scilabwritestr = scilabwritestr.strip()
                 try:
                     scilabwritedata = scilabwritestr.split(' ', 3)
@@ -240,10 +237,10 @@ def startexperiment():
                     cur_fan = int(float(scilabwritedata[2]))
                     cur_variables = ''.join(scilabwritedata[3:]) # converting variable arguments list to string
                     cur_time = int(time() * 1000)
-                    print('data sent => iteration = %d : heat = %d : fan = %d : timestamp = %d : variables = %s' % (cur_iter, cur_heat, cur_fan, cur_time, cur_variables))
+                    print('Data Sent => iteration = %d : heat = %d : fan = %d : timestamp = %d : variables = %s' % (cur_iter, cur_heat, cur_fan, cur_time, cur_variables))
                 except:
-                    print('Invalid data format in scilab write file. Continuing to next data.')
-                    continue
+                    print('Invalid data format in ' + scilabwritefname + '. Exiting.')
+                    return False
             else:
                 continue
 
@@ -251,10 +248,6 @@ def startexperiment():
             srv_data = False
             retry_counter = 0
             while not srv_data:
-                # check for maximum server connection retry attempts
-                if retry_counter > max_retry:
-                    print('Maximum connection retry reached.')
-                    return False
                 try:
                     url_com = base_url + 'communicate'
                     postdata = urllib.urlencode({'iteration' : cur_iter, 'heat' : cur_heat, 'fan' : cur_fan, 'variables' : cur_variables, 'timestamp' : cur_time})
@@ -271,7 +264,16 @@ def startexperiment():
                             # if variable arguments present in server response append it
                             if content[3]:
                                 data_str += ' ' + content[3]
-                            print('data received <=' + data_str)
+                            print('Data Received <= ' + data_str)
+                            # calculating and printing time remaining in minutes
+                            try:
+                                time_remaining = int((exp_end_time - time()) / 60)
+                                if time_remaining < 0:
+                                    time_remaining = 0
+                            except:
+                                time_remaining = 0
+                            print('Time left : ' + str(time_remaining) + ' minutes')
+                            print('')
                             # write data to file
                             scilabreadf.write(data_str + '\n')
                             scilabreadf.flush()
@@ -284,17 +286,18 @@ def startexperiment():
                         if content[1] == '1':
                             # check if end of experiment reached
                             if content[2] == 'END':
-                                print('Experiement timeout reached. Experiment over.')
+                                print('Experiement slot is over. Exiting.')
                                 return True
                             print('Received status message from server: ' + content[2])
                         else:
-                            print('Error fetching response from server: ' + content[2])
+                            print('Received error message from server: ' + content[2])
                 except:
-                    print('Failed to connect to server...retrying.')
+                    print('Failed connecting to server...retry ' + str(retry_counter))
                     retry_counter = retry_counter + 1
+                    sleep(0.1)
                     srv_data = False
     except KeyboardInterrupt:
-        print('\nExperiment terminated...')
+        print('\nYou have terminated the experiment. Exiting.')
         return False
 
 def endexperiment():
@@ -306,7 +309,7 @@ def endexperiment():
         content = res.read()
         return True
     except:
-        print('Connection error ! Please check your internet connection and proxy settings.')
+        print('Connection error ! Please check your internet connection.')
         return False
 
 ################### START EXPERIMENT #####################
@@ -349,6 +352,6 @@ else:
     logf.close()
 
 endexperiment()
-print('Thank you for using the SBHS Virtual Labs project.')
+print('Thank you for using the Single Board Heater System Virtual Labs.')
 exit(0)
 
